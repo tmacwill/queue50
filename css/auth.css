@@ -1,0 +1,11 @@
+.auth-header {
+    font-size: 48px;
+    margin-top: 30%;
+    text-align: center;
+}
+
+#form-login {
+    display: block;
+    margin: 50px auto;
+    text-align: center;
+}
