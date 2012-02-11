@@ -7,12 +7,14 @@ class BaseController extends Controller {
         $this->layout = 'main';
 
         // load app-wide javascript
+        $this->js('lib/jquery-1.7.1.min.js');
         $this->js('lib/bootstrap.min.js');
+        $this->js('navbar.js');
 
         // load app-wide css
         $this->css('lib/bootstrap.min.css');
         $this->css('lib/bootstrap-responsive.min.css');
-        $this->css('lib/global.css');
+        $this->css('global.css');
 
         // initialize auth library
     }

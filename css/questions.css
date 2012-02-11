@@ -1,0 +1,17 @@
+#form-ask {
+    margin-top: 25px;
+}
+
+#txt-title {
+    width: 570px;
+}
+
+#txt-question {
+    width: 570px;
+    height: 75px;
+}
+
+.ul-staff li a {
+    padding: 15px;
+    font-size: 16px;
+}

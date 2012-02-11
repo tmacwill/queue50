@@ -1,0 +1,12 @@
+.navbar-inner {
+    border-radius: 0 !important;
+    -webkit-border-radius: 0 !important;
+    -moz-border-radius: 0 !important;
+}
+
+.brand .caret {
+    border-top-color: white;
+    margin-left: 5px;
+    margin-top: 10px;
+    opacity: 1.0;
+}
