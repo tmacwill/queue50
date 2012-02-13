@@ -17,7 +17,19 @@ for (var i in window.template_html)
     window.templates[i] = _.template(template_html[i]);
 
 $(function() {
+    // connect to live server and subscribe to this suite
+    var socket = io.connect('http://192.168.56.50:3000/questions/live');
+    socket.on('connect', function() {
+        socket.emit('subscribe', { subscription: suite_id });
+    });
+
+    socket.on('new_question', function() {
+        console.log('new question');
+    });
+
+    // ask button sends question to server
     $('#btn-ask').on('click', function(e) {
+        // construct post data
         var question = {
             label: $('#select-label').val(),
             question: $('#txt-question').val(),
@@ -25,14 +37,20 @@ $(function() {
         };
         var d = new Date;
 
+        // send request to api route for new question
         $.post('/questions/add/' + course_id, question, function(response) {
             response = JSON.parse(response);
+
+            // add question to right panel
             $('#table-history tbody').prepend(templates.history_row({ 
                 history: 'asked on ' + d.toString('M/d/yy') + ' at ' + d.toString('h:mmtt').toLowerCase(),
                 question: question.title,
                 question_id: response.id
             }));
             $('#table-history tbody tr:first-child td').effect('highlight', {}, 1000);
+
+            // disable form
+            $('#form-ask input').attr('disabled', true);
         });
 
         e.preventDefault();

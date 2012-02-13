@@ -1,5 +1,5 @@
 <script>
-var course_id = <?= $course_id ?>;
+var suite_id = <?= $suite_id ?>;
 </script>
 
 <div class="container">
@@ -42,33 +42,6 @@ var course_id = <?= $course_id ?>;
                         </td>
                     </tr>
                 <?php endforeach; ?>
-                <!--tr>
-                    <td>
-                        <h4 class="history-question">Why won't my program compile?</h4>
-                        <div class="history-staff">
-                            answered by <strong>Tommy MacWilliam</strong> on 12/12/12 at 12:00am. 
-                            <a href="#">Evaluate your experience.</a>
-                        </div>
-                    </td>
-                </tr>
-                <tr>
-                    <td>
-                        <h4 class="history-question">Why won't my program compile?</h4>
-                        <div class="history-staff">
-                            answered by <strong>Tommy MacWilliam</strong> on 12/12/12 at 12:00am. 
-                            <a href="#">Evaluate your experience.</a>
-                        </div>
-                    </td>
-                </tr>
-                <tr>
-                    <td>
-                        <h4 class="history-question">Why won't my program compile?</h4>
-                        <div class="history-staff">
-                            answered by <strong>Tommy MacWilliam</strong> on 12/12/12 at 12:00am. 
-                            <a href="#">Evaluate your experience.</a>
-                        </div>
-                    </td>
-                </tr-->
             </table>
         </div>
     </div>
