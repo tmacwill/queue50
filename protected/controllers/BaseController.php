@@ -8,12 +8,17 @@ class BaseController extends Controller {
 
         // load app-wide javascript
         $this->js('lib/jquery-1.7.1.min.js');
+        $this->js('lib/jquery-ui-1.8.16.custom.min.js');
         $this->js('lib/bootstrap.min.js');
+        $this->js('lib/underscore-min.js');
+        $this->js('lib/backbone-min.js');
+        $this->js('lib/date.js');
         $this->js('navbar.js');
 
         // load app-wide css
         $this->css('lib/bootstrap.min.css');
         $this->css('lib/bootstrap-responsive.min.css');
+        $this->css('io/jquery-ui-1.8.16.custom.css');
         $this->css('global.css');
 
         // initialize auth library
@@ -38,6 +43,7 @@ class BaseController extends Controller {
 
             // persist model
             if (!$model->save()) {
+                var_dump($model->getErrors());
                 echo json_encode(array('success' => false));
                 exit;
             }

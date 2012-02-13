@@ -13,8 +13,8 @@ class Question extends CActiveRecord {
 
     public function rules() {
         return array(
-            array('suite_id, student_id, question, anonymous, ask_timestamp, answered', 'required'),
-            array('staff_id, dispatch_timestamp', 'safe')
+            array('suite_id, student_id, title, anonymous, ask_timestamp, answered', 'required'),
+            array('staff_id, dispatch_timestamp, question', 'safe')
         );
     }
 
