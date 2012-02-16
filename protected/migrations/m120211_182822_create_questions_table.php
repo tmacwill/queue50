@@ -11,6 +11,7 @@ class m120211_182822_create_questions_table extends CDbMigration {
             'question' => 'varchar(8192)',
             'anonymous' => 'tinyint not null',
             'ask_timestamp' => 'datetime not null',
+            'action_timestamp' => 'datetime',
             'dispatch_timestamp' => 'datetime',
             'state' => 'tinyint not null'
         ));

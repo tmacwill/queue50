@@ -24,24 +24,32 @@ var suite_id = <?= $suite_id ?>;
         <div class="span6">
             <h1 class="page-header">Question History</h1>
             <table id="table-history" class="table table-striped">
-                <?php foreach ($questions as $question): ?>
-                    <tr data-question-id="<?= $question->id ?>">
-                        <td>
-                            <h4 class="history-question"><?= $question->title ?></h4>
-                            <div class="history-event">
-                                <?php if ($question->state == 0): ?>
-                                    asked on <?= date('n/j/y', strtotime($question->ask_timestamp)) ?> at 
-                                    <?= strtolower(date('g:iA', strtotime($question->ask_timestamp))) ?>
-                                <?php else: ?>
-                                    answered <?php if ($question->staff_id): ?> by <strong><?= $question->staff_id ?></strong><?php endif; ?> on 
-                                    <?= date('n/j/y', strtotime($question->dispatch_timestamp)) ?> at 
-                                    <?= strtolower(date('g:iA', strtotime($question->dispatch_timestamp))) ?>. 
-                                    <a href="#">Evaluate your experience.</a>
-                                <?php endif; ?>
-                            </div>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
+                <tbody>
+                    <?php foreach ($questions as $question): ?>
+                        <tr data-question-id="<?= $question->id ?>">
+                            <td>
+                                <h4 class="history-question"><?= $question->title ?></h4>
+                                <div class="history-event">
+                                    <?php if ($question->state == 0): ?>
+                                        asked on <?= date('n/j/y', strtotime($question->ask_timestamp)) ?> at 
+                                        <?= strtolower(date('g:iA', strtotime($question->ask_timestamp))) ?>
+                                    <?php elseif ($question->state == 1): ?>
+                                        entered the Queue on <?= date('n/j/y', strtotime($question->action_timestamp)) ?> at 
+                                        <?= strtolower(date('g:iA', strtotime($question->action_timestamp))) ?>
+                                    <?php elseif ($question->state == 2): ?>
+                                        posted to Help on <?= date('n/j/y', strtotime($question->action_timestamp)) ?> at 
+                                        <?= strtolower(date('g:iA', strtotime($question->action_timestamp))) ?>
+                                    <?php elseif ($question->state == 3): ?>
+                                        answered <?php if ($question->staff_id): ?> by <strong><?= $question->staff_id ?></strong><?php endif; ?> on 
+                                        <?= date('n/j/y', strtotime($question->dispatch_timestamp)) ?> at 
+                                        <?= strtolower(date('g:iA', strtotime($question->dispatch_timestamp))) ?>. 
+                                        <a href="#">Evaluate your experience.</a>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
             </table>
         </div>
     </div>

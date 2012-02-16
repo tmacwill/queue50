@@ -36,6 +36,39 @@ function showNotification(message) {
     }
 }
 
+/**
+ * Toggle the state of the question asking form
+ * @param state True to enable, false to disable
+ *
+ */
+function toggleAsk(state) {
+    var elements =  $('#form-ask input, #form-ask textarea, #form-ask select');
+    elements.attr('disabled', !state)
+        
+    // when enabling form, clear text
+    if (state)
+        elements.val('');
+}
+
+/**
+ * Show a notification for and update the cell of an event
+ * @param id ID of affected question
+ * @param message Message to display
+ * @param been Whether or not to add the word "been" to the message. This is pretty stupid.
+ *
+ */
+function updateEvent(id, message, been) {
+    // update UI
+    var d = new Date;
+    showNotification('Your question has ' + ((been) ? 'been ' : '') + message + '!');
+    $('tr[data-question-id="' + id + '"] .history-event')
+        .html(message + ' on ' + d.toString('M/d/yy') + ' at ' + 
+            d.toString('h:mmtt').replace(/^0:(.*)$/, '12:$1').toLowerCase());
+
+    // enable form
+    toggleAsk(true);
+}
+
 $(function() {
     // connect to live server and subscribe to this suite
     var socket = io.connect('http://192.168.56.50:3000/questions/live');
@@ -45,29 +78,13 @@ $(function() {
 
     socket.on('toHelp', function(data) {
         if (window.question_id == data.id) {
-            // update UI
-            var d = new Date;
-            showNotification('Your question has been posted to Help!');
-            $('tr[data-question-id="' + data.id + '"] .history-event')
-                .html('posted to Help on ' + d.toString('M/d/yy') + ' at ' + 
-                    d.toString('h:mmtt').replace(/^0:(.*)$/, '12:$1').toLowerCase());
-
-            // enable form
-            $('#form-ask input, #form-ask textarea, #form-ask select').attr('disabled', false).val('');
+            updateEvent(data.id, 'posted to Help', true);
         }
     });
 
     socket.on('toQueue', function(data) {
         if (window.question_id == data.id) {
-            // update UI
-            var d = new Date;
-            showNotification('Your question has entered the queue!');
-            $('tr[data-question-id="' + data.id + '"] .history-event')
-                .html('entered the queue on ' + d.toString('M/d/yy') + ' at ' + 
-                    d.toString('h:mmtt').replace(/^0:(.*)$/, '12:$1').toLowerCase());
-
-            // enable form
-            $('#form-ask input, #form-ask textarea, #form-ask select').attr('disabled', false).val('');
+            updateEvent(data.id, 'entered the Queue', false);
         }
     });
 

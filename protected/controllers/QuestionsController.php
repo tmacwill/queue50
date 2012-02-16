@@ -112,7 +112,7 @@ class QuestionsController extends BaseController {
         // update state of question
         $question = Question::model()->findByPk($id);
         $question->dispatch_timestamp = date('Y-m-d H:i:s');
-        $question->state = 1;
+        $question->state = 3;
 
         // persist question
         if (!$question->save()) {
@@ -166,8 +166,8 @@ class QuestionsController extends BaseController {
         // update state of question
         $id = $_POST['id'];
         $question = Question::model()->findByPk($id);
-        $question->dispatch_timestamp = date('Y-m-d H:i:s');
-        $question->state = 3;
+        $question->action_timestamp = date('Y-m-d H:i:s');
+        $question->state = 2;
 
         // persist question
         if (!$question->save()) {
@@ -199,7 +199,7 @@ class QuestionsController extends BaseController {
         // update state of question
         $id = $_POST['id'];
         $question = Question::model()->findByPk($id);
-        $question->dispatch_timestamp = date('Y-m-d H:i:s');
+        $question->action_timestamp = date('Y-m-d H:i:s');
         $question->state = 1;
 
         // persist question
