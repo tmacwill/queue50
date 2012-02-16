@@ -28,7 +28,7 @@ var suite_id = <?= $suite_id ?>;
                     <tr data-question-id="<?= $question->id ?>">
                         <td>
                             <h4 class="history-question"><?= $question->title ?></h4>
-                            <div class="history-staff">
+                            <div class="history-event">
                                 <?php if ($question->state == 0): ?>
                                     asked on <?= date('n/j/y', strtotime($question->ask_timestamp)) ?> at 
                                     <?= strtolower(date('g:iA', strtotime($question->ask_timestamp))) ?>
