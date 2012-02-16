@@ -12,7 +12,7 @@ class m120211_182822_create_questions_table extends CDbMigration {
             'anonymous' => 'tinyint not null',
             'ask_timestamp' => 'datetime not null',
             'dispatch_timestamp' => 'datetime',
-            'answered' => 'tinyint not null'
+            'state' => 'tinyint not null'
         ));
 	}
 

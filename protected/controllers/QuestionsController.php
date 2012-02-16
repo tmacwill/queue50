@@ -28,7 +28,7 @@ class QuestionsController extends BaseController {
     public function actionAdd($id) {
         // set question defaults
         $_POST['anonymous'] = 0;
-        $_POST['answered'] = 0;
+        $_POST['state'] = 0;
         $_POST['ask_timestamp'] = date('Y-m-d H:i:s');
         $_POST['suite_id'] = $id;
         $_POST['student_id'] = 1;
@@ -36,7 +36,12 @@ class QuestionsController extends BaseController {
         unset($_POST['label']);
 
         // add question object to database
-        parent::actionAdd();
+        $question = new Question;
+        $question->attributes = $_POST;
+        if (!$question->save()) {
+            echo json_encode(array('success' => false));
+            exit;
+        }
 
         // TODO: add to question_labels table
 
@@ -45,12 +50,42 @@ class QuestionsController extends BaseController {
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_exec($ch);
         curl_close($ch);
+
+        // invalidate cache since a new question has been added
+        $this->memcache->delete("queue?suite_id=$id");
+        echo json_encode(array(
+            'success' => true, 
+            'id' => $question->id
+        ));
+        exit;
     }
 
+    /**
+     * Display the load balancer
+     * @param $id ID of suite to balance
+     *
+     */
+    public function actionBalance($id) {
+        // fetch all questions in the load balancer 
+        $questions = $this->loadBalancer($id);
+
+        $this->js('questions/balance.js');
+        $this->render('balance', array(
+            'suite_id' => $id,
+            'questions' => $questions
+        ));
+    }
+
+    /**
+     * UI for asking a question
+     * @param $id ID of suite to ask question in 
+     *
+     */
     public function actionCourse($id) {
         // TEMP
         $user_id = 1;
 
+        // fetch this user's question history
         $questions = Question::model()->findAll(array(
             'condition' => 'student_id = :student_id',
             'limit' => 10,
@@ -66,38 +101,173 @@ class QuestionsController extends BaseController {
     }
 
     /**
+     * Dispatch a question to a TF
+     * @param $id ID of question to dispatch
+     *
+     */
+    public function actionDispatch($id) {
+        // TEMP
+        $user_id = 1;
+
+        // update state of question
+        $question = Question::model()->findByPk($id);
+        $question->dispatch_timestamp = date('Y-m-d H:i:s');
+        $question->state = 1;
+
+        // persist question
+        if (!$question->save()) {
+            echo json_encode(array('success' => false));
+            exit;
+        }
+
+        // make request to live server to inform clients to refresh queue (since question has been added)
+        $ch = curl_init("http://localhost:3000/questions/dispatch/{$question->suite_id}/$id");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_exec($ch);
+        curl_close($ch);
+
+        // invalidate cache since a question has been removed
+        $this->memcache->delete("queue?suite_id=$id");
+        echo json_encode(array('success' => true));
+        exit;
+    }
+
+    /**
+     * Fetch the load balancer for a suite
+     * @param $id ID of suite to fetch load balancer for
+     * 
+     */
+    public function actionLoadBalancer($id) {
+        echo CJSON::encode($this->loadBalancer($id));
+        exit;
+    }
+
+    /**
      * Fetch the queue for a suite
      * @param $id ID of suite to fetch queue for
      * 
      */
     public function actionQueue($id) {
-        // check cache for questions and return if not empty
-        $questions = $this->memcache->get("queue?suite_id=$id");
-        if ($questions !== false && $questions !== null) {
-            echo CJSON::encode($questions);
+        echo CJSON::encode($this->queue($id));
+        exit;
+    }
+
+    /**
+     * Send a question to help
+     *
+     */
+    public function actionSendToHelp() {
+        // make sure id is given
+        if (!isset($_POST['id'])) {
+            echo json_encode(array('success' => false));
             exit;
         }
 
-        // calculate timestamps for today and tomorrow to limit search
-        $yesterday = date('Y-m-d H:i:s', strtotime('-1 day'));
-        $tomorrow = date('Y-m-d H:i:s', strtotime('+1 day'));
+        // update state of question
+        $id = $_POST['id'];
+        $question = Question::model()->findByPk($id);
+        $question->dispatch_timestamp = date('Y-m-d H:i:s');
+        $question->state = 3;
 
-        // fetch all unanswered questions from within 48 hours
+        // persist question
+        if (!$question->save()) {
+            echo json_encode(array('success' => false));
+            exit;
+        }
+
+        // inform live server question has been sent to help
+        $ch = curl_init("http://localhost:3000/questions/toHelp/{$question->suite_id}/$id");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_exec($ch);
+        curl_close($ch);
+
+        echo json_encode(array('success' => true));
+        exit;
+    }
+
+    /**
+     * Send a question to the queue
+     *
+     */
+    public function actionSendToQueue() {
+        // make sure id is given
+        if (!isset($_POST['id'])) {
+            echo json_encode(array('success' => false));
+            exit;
+        }
+
+        // update state of question
+        $id = $_POST['id'];
+        $question = Question::model()->findByPk($id);
+        $question->dispatch_timestamp = date('Y-m-d H:i:s');
+        $question->state = 1;
+
+        // persist question
+        if (!$question->save()) {
+            echo json_encode(array('success' => false));
+            exit;
+        }
+
+        // inform live server question has been sent to queue
+        $ch = curl_init("http://localhost:3000/questions/toQueue/{$question->suite_id}/$id");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_exec($ch);
+        curl_close($ch);
+
+        echo json_encode(array('success' => true));
+        exit;
+    }
+
+    /**
+     * Get the load balance questions for a suite
+     * @param $id ID of suite to get load balancer for
+     * @return Array of questions in the load balancer
+     *
+     */
+    public function loadBalancer($id) {
+        // fetch all questions in the load balancer from within 48 hours
         $questions = Question::model()->findAll(array(
-            'condition' => 'suite_id = :suite_id AND answered = :answered AND ask_timestamp >= :yesterday ' . 
+            'condition' => 'suite_id = :suite_id AND state = :state AND ask_timestamp >= :yesterday ' . 
                 'AND ask_timestamp <= :tomorrow',
-            'order' => 'ask_timestamp desc',
+            'order' => 'ask_timestamp asc',
             'params' => array(
                 'suite_id' => $id,
-                'answered' => 0,
-                'yesterday' => $yesterday,
-                'tomorrow' => $tomorrow
+                'state' => 0,
+                'yesterday' => date('Y-m-d H:i:s', strtotime('-1 day')),
+                'tomorrow' => date('Y-m-d H:i:s', strtotime('+1 day'))
+            )
+        ));
+
+        return $questions;
+    }
+
+    /**
+     * Get the queue for a suite
+     * @param $id ID of suite to get queue for
+     * @return Array of questions in the queue
+     *
+     */
+    public function queue($id) {
+        // check cache for questions and return if not empty
+        $questions = $this->memcache->get("queue?suite_id=$id");
+        if ($questions !== false && $questions !== null) 
+            return $questions;
+
+        // fetch all questions in the queue from within 48 hours
+        $questions = Question::model()->findAll(array(
+            'condition' => 'suite_id = :suite_id AND state = :state AND ask_timestamp >= :yesterday ' . 
+                'AND ask_timestamp <= :tomorrow',
+            'order' => 'ask_timestamp asc',
+            'params' => array(
+                'suite_id' => $id,
+                'state' => 1,
+                'yesterday' => date('Y-m-d H:i:s', strtotime('-1 day')),
+                'tomorrow' => date('Y-m-d H:i:s', strtotime('+1 day'))
             )
         ));
 
         // cache and return questions
         $this->memcache->set("queue?suite_id=$id", $questions);
-        echo CJSON::encode($questions);
-        exit;
+        return $questions;
     }
 }

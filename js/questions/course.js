@@ -23,8 +23,22 @@ $(function() {
         socket.emit('subscribe', { subscription: suite_id });
     });
 
-    socket.on('new_question', function() {
-        console.log('new question');
+    socket.on('toHelp', function(data) {
+        if (window.question_id == data.id) {
+            alert('Your question has been sent to help!');
+
+            // enable form
+            $('#form-ask input, #form-ask textarea, #form-ask select').attr('disabled', false).val('');
+        }
+    });
+
+    socket.on('toQueue', function(data) {
+        if (window.question_id == data.id) {
+            alert('Your question has been sent to queue!');
+
+            // enable form
+            $('#form-ask input, #form-ask textarea, #form-ask select').attr('disabled', false).val('');
+        }
     });
 
     // ask button sends question to server
@@ -38,19 +52,22 @@ $(function() {
         var d = new Date;
 
         // send request to api route for new question
-        $.post('/questions/add/' + course_id, question, function(response) {
+        $.post('/questions/add/' + suite_id, question, function(response) {
             response = JSON.parse(response);
 
             // add question to right panel
             $('#table-history tbody').prepend(templates.history_row({ 
-                history: 'asked on ' + d.toString('M/d/yy') + ' at ' + d.toString('h:mmtt').toLowerCase(),
+                history: 'asked on ' + d.toString('M/d/yy') + ' at ' + d.toString('h:mmtt').replace(/^0:(.*)$/, '12:$1').toLowerCase(),
                 question: question.title,
                 question_id: response.id
             }));
             $('#table-history tbody tr:first-child td').effect('highlight', {}, 1000);
 
             // disable form
-            $('#form-ask input').attr('disabled', true);
+            $('#form-ask input, #form-ask textarea, #form-ask select').attr('disabled', true);
+
+            // remember question id
+            window.question_id = response.id;
         });
 
         e.preventDefault();

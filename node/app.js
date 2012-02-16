@@ -15,9 +15,30 @@ app.configure('production', function() {
     app.use(express.errorHandler());
 });
 
-// new question asked, so broadcast to all sockets in this suite
+// question has been added
 app.get('/questions/add/:suite_id', function(req, res) {
-    io.of('/questions/live').in(req.params.suite_id).emit('new_question');
+    io.of('/questions/live').in(req.params.suite_id).emit('add');
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.end('');
+});
+
+// question has been dispatched
+app.get('/questions/dispatch/:suite_id/:id', function(req, res) {
+    io.of('/questions/live').in(req.params.suite_id).emit('dispatch', { id: req.params.id });
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.end('');
+});
+
+// question has been sent to help
+app.get('/questions/toHelp/:suite_id/:id', function(req, res) {
+    io.of('/questions/live').in(req.params.suite_id).emit('toHelp', { id: req.params.id });
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.end('');
+});
+
+// question has been sent to queue
+app.get('/questions/toQueue/:suite_id/:id', function(req, res) {
+    io.of('/questions/live').in(req.params.suite_id).emit('toQueue', { id: req.params.id });
     res.writeHead(200, {'Content-Type': 'text/plain'});
     res.end('');
 });
