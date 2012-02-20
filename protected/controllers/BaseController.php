@@ -164,4 +164,25 @@ class BaseController extends Controller {
     public function js($path) {
         Yii::app()->clientScript->registerScriptFile('/js/' . $path);
     }
+
+    /**
+     * JSON-encode an object, including its relations
+     * http://learnyii.blogspot.com/2011/07/yii-json-cjson-models-model-related.html
+     *
+     */
+    public function json($models, $attributeNames) {
+        $attributeNames = explode(',', $attributeNames);
+
+        $rows = array();
+        foreach ($models as $model) {
+            $row = array();
+            foreach ($attributeNames as $name) {
+                $name = trim($name); 
+                $row[$name] = CHtml::value($model, $name);
+            }
+            $rows[] = $row;
+        }
+
+        return CJSON::encode($rows);
+    }
 }

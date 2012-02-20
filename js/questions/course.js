@@ -99,7 +99,7 @@ $(function() {
 
         // construct post data
         var question = {
-            label: $('#select-label').val(),
+            labels: [$('#select-label').val()],
             question: $('#txt-question').val(),
             title: $('#txt-title').val()
         };

@@ -33,8 +33,6 @@ class QuestionsController extends BaseController {
         $_POST['suite_id'] = $id;
         $_POST['student_id'] = 1;
 
-        unset($_POST['label']);
-
         // add question object to database
         $question = new Question;
         $question->attributes = $_POST;
@@ -43,7 +41,12 @@ class QuestionsController extends BaseController {
             exit;
         }
 
-        // TODO: add to question_labels table
+        // add associated labels
+        foreach ($_POST['labels'] as $label)
+            Yii::app()->db->createCommand()->insert('question_labels', array(
+                'label_id' => $label,
+                'question_id' => $question->id,
+            ));
 
         // make request to live server to inform clients to refresh queue (since question has been added)
         $ch = curl_init("http://localhost:3000/questions/add/$id");
@@ -51,8 +54,6 @@ class QuestionsController extends BaseController {
         curl_exec($ch);
         curl_close($ch);
 
-        // invalidate cache since a new question has been added
-        $this->memcache->delete("queue?suite_id=$id");
         echo json_encode(array(
             'success' => true, 
             'id' => $question->id
@@ -93,10 +94,16 @@ class QuestionsController extends BaseController {
             'params' => array('student_id' => $user_id)
         ));
 
+        // get labels for this suite
+        $labels = Label::model()->findAllByAttributes(array(
+            'suite_id' => $id
+        ));
+
         $this->js('questions/course.js');
         $this->render('course', array(
-            'suite_id' => $id,
-            'questions' => $questions
+            'labels' => $labels,
+            'questions' => $questions,
+            'suite_id' => $id
         ));
     }
 
@@ -148,7 +155,8 @@ class QuestionsController extends BaseController {
      * 
      */
     public function actionQueue($id) {
-        echo CJSON::encode($this->queue($id));
+        $questions = $this->queue($id);
+        echo $this->json($questions['questions'], 'id, suite_id, student_id, staff_id, title, question, anonymous, ask_timestamp, state, labels');
         exit;
     }
 
@@ -214,6 +222,9 @@ class QuestionsController extends BaseController {
         curl_exec($ch);
         curl_close($ch);
 
+        // invalidate cache since a new question has been added
+        $this->memcache->delete("queue?suite_id={$question->suite_id}");
+
         echo json_encode(array('success' => true));
         exit;
     }
@@ -249,13 +260,13 @@ class QuestionsController extends BaseController {
      */
     public function queue($id) {
         // check cache for questions and return if not empty
-        $questions = $this->memcache->get("queue?suite_id=$id");
-        if ($questions !== false && $questions !== null) 
-            return $questions;
+        //$questions = $this->memcache->get("queue?suite_id=$id");
+        //if ($questions !== false && $questions !== null) 
+            //return array('questions' => $questions, 'changed' => false);
 
         // fetch all questions in the queue from within 48 hours
-        $questions = Question::model()->findAll(array(
-            'condition' => 'suite_id = :suite_id AND state = :state AND ask_timestamp >= :yesterday ' . 
+        $questions = Question::model()->with('labels')->findAll(array(
+            'condition' => 't.suite_id = :suite_id AND state = :state AND ask_timestamp >= :yesterday ' . 
                 'AND ask_timestamp <= :tomorrow',
             'order' => 'ask_timestamp asc',
             'params' => array(
@@ -263,11 +274,11 @@ class QuestionsController extends BaseController {
                 'state' => 1,
                 'yesterday' => date('Y-m-d H:i:s', strtotime('-1 day')),
                 'tomorrow' => date('Y-m-d H:i:s', strtotime('+1 day'))
-            )
+            ),
         ));
 
         // cache and return questions
         $this->memcache->set("queue?suite_id=$id", $questions);
-        return $questions;
+        return array('questions' => $questions, 'changed' => true);
     }
 }

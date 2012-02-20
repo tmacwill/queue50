@@ -10,8 +10,9 @@ var suite_id = <?= $suite_id ?>;
             <form id="form-ask">
                 <select id="select-label">
                     <option value="">Give your question a label.</option>
-                    <option value="1">pset1</option>
-                    <option value="2">pset2</option>
+                    <?php foreach ($labels as $label): ?>
+                        <option value="<?= $label->id ?>"><?= $label->name ?></option>
+                    <?php endforeach; ?>
                 </select>
                 <br />
                 <input id="txt-title" type="text" placeholder="What's your question in once sentence?" />
