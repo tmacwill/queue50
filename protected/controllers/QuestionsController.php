@@ -156,7 +156,8 @@ class QuestionsController extends BaseController {
      */
     public function actionQueue($id) {
         $questions = $this->queue($id);
-        echo $this->json($questions['questions'], 'id, suite_id, student_id, staff_id, title, question, anonymous, ask_timestamp, state, labels');
+        echo $this->json('questions', $questions['questions'], 
+            'id, suite_id, student_id, staff_id, title, question, anonymous, ask_timestamp, state, labels, student');
         exit;
     }
 
@@ -260,9 +261,9 @@ class QuestionsController extends BaseController {
      */
     public function queue($id) {
         // check cache for questions and return if not empty
-        //$questions = $this->memcache->get("queue?suite_id=$id");
-        //if ($questions !== false && $questions !== null) 
-            //return array('questions' => $questions, 'changed' => false);
+        $questions = $this->memcache->get("queue?suite_id=$id");
+        if ($questions !== false && $questions !== null) 
+            return array('questions' => $questions, 'changed' => false);
 
         // fetch all questions in the queue from within 48 hours
         $questions = Question::model()->with('labels')->findAll(array(
@@ -277,8 +278,20 @@ class QuestionsController extends BaseController {
             ),
         ));
 
+        // get all students who have asked a question
+        $student_ids = array_map(function($e) { return $e->student_id; }, $questions);
+        $students = $this->cs50->users($student_ids);
+
+        // associate students with question
+        $result = array();
+        foreach ($questions as &$question) {
+            $q = $question->attributes;
+            $q['student'] = $students[$question->student_id];
+            $result[] = $q;
+        }
+
         // cache and return questions
-        $this->memcache->set("queue?suite_id=$id", $questions);
-        return array('questions' => $questions, 'changed' => true);
+        $this->memcache->set("queue?suite_id=$id", $result);
+        return array('questions' => $result, 'changed' => true);
     }
 }

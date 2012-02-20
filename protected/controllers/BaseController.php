@@ -1,6 +1,7 @@
 <?php
 
 class BaseController extends Controller {
+    public $cs50;
 
     public function __construct($id, $module = null) {
         parent::__construct($id, $module);
@@ -22,6 +23,18 @@ class BaseController extends Controller {
         $this->css('global.css');
 
         // initialize auth library
+        $this->cs50 = new CS50('queue', array(
+            'cache' => array(
+                'host' => 'localhost',
+                'port' => 11211
+            ),
+            'master' => array(
+                'db_name' => 'auth',
+                'host' => 'localhost',
+                'password' => 'crimson',
+                'user' => 'root'
+            )
+        ));
     }
 
     /**
@@ -167,10 +180,13 @@ class BaseController extends Controller {
 
     /**
      * JSON-encode an object, including its relations
-     * http://learnyii.blogspot.com/2011/07/yii-json-cjson-models-model-related.html
+     * Modified from http://learnyii.blogspot.com/2011/07/yii-json-cjson-models-model-related.html
      *
      */
-    public function json($models, $attributeNames) {
+    public function json($key, $models, $attributeNames) {
+        if (!is_array($models) || count($models) < 1)
+            return CJSON::encode($models);
+
         $attributeNames = explode(',', $attributeNames);
 
         $rows = array();
@@ -183,6 +199,6 @@ class BaseController extends Controller {
             $rows[] = $row;
         }
 
-        return CJSON::encode($rows);
+        return CJSON::encode(array($key => $rows));
     }
 }
