@@ -23,8 +23,8 @@ app.get('/questions/add/:suite_id', function(req, res) {
 });
 
 // question has been dispatched
-app.get('/questions/dispatch/:suite_id/:id', function(req, res) {
-    io.of('/questions/live').in(req.params.suite_id).emit('dispatch', { id: req.params.id });
+app.get('/questions/dispatch/:suite_id/:ids', function(req, res) {
+    io.of('/questions/live').in(req.params.suite_id).emit('dispatch', { ids: req.params.ids });
     res.writeHead(200, {'Content-Type': 'text/plain'});
     res.end('');
 });
@@ -44,7 +44,7 @@ app.get('/questions/toQueue/:suite_id/:id', function(req, res) {
 });
 
 var live = io.of('/questions/live').on('connection', function(socket) {
-    // subscribe to updates for the given class
+    // subscribe to updates for the given suite
     socket.on('subscribe', function(data) {
         socket.set('subscription', data.subscription);
         socket.join(data.subscription);

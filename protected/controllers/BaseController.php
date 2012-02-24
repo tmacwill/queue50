@@ -1,6 +1,12 @@
 <?php
 
 class BaseController extends Controller {
+    // URI properties
+    public $action;
+    public $controller;
+    public $params;
+
+    // core50 instance
     public $cs50;
 
     public function __construct($id, $module = null) {
@@ -35,6 +41,13 @@ class BaseController extends Controller {
                 'user' => 'root'
             )
         ));
+
+        // parse URI into something controllers can use
+        $components = explode('/', Yii::app()->request->requestUri);
+        array_shift($components);
+        $this->controller = array_shift($components);
+        $this->action = array_shift($components);
+        $this->params = $components;
     }
 
     /**
@@ -184,8 +197,8 @@ class BaseController extends Controller {
      *
      */
     public function json($key, $models, $attributeNames) {
-        if (!is_array($models) || count($models) < 1)
-            return CJSON::encode($models);
+        if (!is_array($models))
+            $models = array($models);
 
         $attributeNames = explode(',', $attributeNames);
 
@@ -199,6 +212,7 @@ class BaseController extends Controller {
             $rows[] = $row;
         }
 
-        return CJSON::encode(array($key => $rows));
+        return (count($rows) == 1) ? CJSON::encode(array($key => array_shift($rows))) : 
+            CJSON::encode(array($key => $rows));
     }
 }

@@ -44,7 +44,7 @@ var suite_id = <?= $suite_id ?>;
                                         answered <?php if ($question->staff_id): ?> by <strong><?= $question->staff_id ?></strong><?php endif; ?> on 
                                         <?= date('n/j/y', strtotime($question->dispatch_timestamp)) ?> at 
                                         <?= strtolower(date('g:iA', strtotime($question->dispatch_timestamp))) ?>. 
-                                        <a href="#">Evaluate your experience.</a>
+                                        <a href="#" class="a-evaluate">Evaluate your experience.</a>
                                     <?php endif; ?>
                                 </div>
                             </td>

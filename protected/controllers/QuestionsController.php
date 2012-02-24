@@ -22,6 +22,7 @@ class QuestionsController extends BaseController {
 
     /**
      * Add a question to a suite
+     *
      * @param $id ID of suite
      *
      */
@@ -48,12 +49,8 @@ class QuestionsController extends BaseController {
                 'question_id' => $question->id,
             ));
 
-        // make request to live server to inform clients to refresh queue (since question has been added)
-        $ch = curl_init("http://localhost:3000/questions/add/$id");
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_exec($ch);
-        curl_close($ch);
-
+        // relay request to load balancer through the live server
+        $this->notifyLive("questions/add/$id");
         echo json_encode(array(
             'success' => true, 
             'id' => $question->id
@@ -109,38 +106,65 @@ class QuestionsController extends BaseController {
 
     /**
      * Dispatch a question to a TF
-     * @param $id ID of question to dispatch
+     * 
+     * @param $id Array of IDs of questions to dispatch
      *
      */
-    public function actionDispatch($id) {
+    public function actionDispatch() {
         // TEMP
         $user_id = 1;
 
-        // update state of question
-        $question = Question::model()->findByPk($id);
-        $question->dispatch_timestamp = date('Y-m-d H:i:s');
-        $question->state = 3;
-
-        // persist question
-        if (!$question->save()) {
+        // make sure questions have been specified
+        $question_ids = explode(',', $_POST['ids']);
+        if (empty($question_ids)) {
             echo json_encode(array('success' => false));
             exit;
         }
 
-        // make request to live server to inform clients to refresh queue (since question has been added)
-        $ch = curl_init("http://localhost:3000/questions/dispatch/{$question->suite_id}/$id");
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_exec($ch);
-        curl_close($ch);
+        // assign questions to staff
+        $staff_id = $_POST['staff_id'];
+        Yii::app()->db->createCommand()->update('questions', array(
+            'dispatch_timestamp' => date('Y-m-d H:i:s'),
+            'staff_id' => $staff_id,
+            'state' => 3
+        ), array('in', 'id', $question_ids));
+
+        // relay dispatch notifications through live server
+        $question_ids = implode(',', $question_ids);
+        $question = Question::model()->findByPk($question_ids[0]);
+        $this->notifyLive("questions/dispatch/{$question->suite_id}/$question_ids");
 
         // invalidate cache since a question has been removed
-        $this->memcache->delete("queue?suite_id=$id");
+        $this->memcache->delete("queue?suite_id={$question->suite_id}");
         echo json_encode(array('success' => true));
         exit;
     }
 
     /**
+     * Get a single question
+     *
+     */
+    public function actionGet($id) {
+        // make sure object exists
+        if (!Question::model()->exists('id = :id', array(':id' => $id))) {
+            echo json_encode(array('success' => false));
+            exit;
+        }
+
+        // get object from database
+        $question = Question::model()->with('labels')->findByPk($id);
+        $question->student = $this->cs50->user($question->student_id);
+        if ($question->staff_id)
+            $question->staff = $this->cs50->user($question->staff_id);
+
+        echo $this->json('question', $question,
+            'id, suite_id, title, question, anonymous, ask_timestamp, action_timestamp, dispatch_timestamp, state, labels, student, staff');
+        exit;
+    }
+
+    /**
      * Fetch the load balancer for a suite
+     *
      * @param $id ID of suite to fetch load balancer for
      * 
      */
@@ -151,6 +175,7 @@ class QuestionsController extends BaseController {
 
     /**
      * Fetch the queue for a suite
+     *
      * @param $id ID of suite to fetch queue for
      * 
      */
@@ -185,10 +210,7 @@ class QuestionsController extends BaseController {
         }
 
         // inform live server question has been sent to help
-        $ch = curl_init("http://localhost:3000/questions/toHelp/{$question->suite_id}/$id");
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_exec($ch);
-        curl_close($ch);
+        $this->notifyLive("questions/toHelp/{$questions->suite_id}/$id");
 
         echo json_encode(array('success' => true));
         exit;
@@ -217,11 +239,9 @@ class QuestionsController extends BaseController {
             exit;
         }
 
-        // inform live server question has been sent to queue
-        $ch = curl_init("http://localhost:3000/questions/toQueue/{$question->suite_id}/$id");
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_exec($ch);
-        curl_close($ch);
+        // notify live server so student gets update and push server so ipad gets update
+        $this->notifyLive("questions/toQueue/{$question->suite_id}/$id");
+        $this->notifyPush('queue_suite_id_' . $question->suite_id, 'refresh');
 
         // invalidate cache since a new question has been added
         $this->memcache->delete("queue?suite_id={$question->suite_id}");
@@ -232,6 +252,7 @@ class QuestionsController extends BaseController {
 
     /**
      * Get the load balance questions for a suite
+     *
      * @param $id ID of suite to get load balancer for
      * @return Array of questions in the load balancer
      *
@@ -254,7 +275,42 @@ class QuestionsController extends BaseController {
     }
 
     /**
+     * Notify the live server
+     *
+     * @param $url URL to sent request to
+     *
+     */
+    public function notifyLive($url) {
+        $ch = curl_init("http://localhost:3000/$url");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_exec($ch);
+        curl_close($ch);
+    }
+
+    /**
+     * Notify the push notification server
+     *
+     */
+    public function notifyPush($channel, $data) {
+        // omg stupid quotes, bug report submitted to parse
+        $data = '{"channel":"' . $channel . '","type":"ios","data":{"alert":"' . $data . '"}}';
+
+        $ch = curl_init("https://api.parse.com/1/push");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Content-Type: application/json',
+            'X-Parse-Application-Id: IwrE84o8YUVtrIGvMsztIYQ4aYVrRvOpBidzWdk1',
+            'X-Parse-REST-API-Key: 8FhCdrit7PhvcYsCaXJozeRnEFpqwsYPmwttfl1C'
+        ));
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_exec($ch);
+        curl_close($ch);
+    }
+
+    /**
      * Get the queue for a suite
+     *
      * @param $id ID of suite to get queue for
      * @return Array of questions in the queue
      *
@@ -283,15 +339,11 @@ class QuestionsController extends BaseController {
         $students = $this->cs50->users($student_ids);
 
         // associate students with question
-        $result = array();
-        foreach ($questions as &$question) {
-            $q = $question->attributes;
-            $q['student'] = $students[$question->student_id];
-            $result[] = $q;
-        }
+        foreach ($questions as $question)
+            $question->student = $students[$question->student_id];
 
         // cache and return questions
-        $this->memcache->set("queue?suite_id=$id", $result);
-        return array('questions' => $result, 'changed' => true);
+        $this->memcache->set("queue?suite_id=$id", $questions);
+        return array('questions' => $questions, 'changed' => true);
     }
 }

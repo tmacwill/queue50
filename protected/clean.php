@@ -16,13 +16,18 @@ $cs50 = new CS50('queue', array(
     )
 ));
 
+echo "Emptying memcache...\n";
+$memcache = new Memcache;
+$memcache->connect('localhost', 11211);
+$memcache->flush();
+
 mysql_connect('localhost', 'root', 'crimson');
 mysql_select_db('queue50');
 
 echo "Emptying tables...\n";
 mysql_query('truncate labels');
 mysql_query('truncate questions');
-mysql_query('trucate question_labels');
+mysql_query('truncate question_labels');
 
 mysql_select_db('auth');
 mysql_query('SET FOREIGN_KEY_CHECKS = 0');
