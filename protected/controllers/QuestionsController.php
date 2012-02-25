@@ -4,7 +4,9 @@ require_once 'protected/controllers/BaseController.php';
 
 class QuestionsController extends BaseController {
     var $model = 'Question';
+
     private $memcache;
+    private $redis;
 
     public function __construct($id, $module = null) {
         parent::__construct($id, $module);
@@ -12,6 +14,9 @@ class QuestionsController extends BaseController {
         // connect to memcache
         $this->memcache = new Memcache;
         $this->memcache->connect('localhost', 11211);
+
+        // connect to redis
+        $this->redis = new Predis\Client;   
 
         // controller-wide css
         $this->css('questions.css');
@@ -75,6 +80,23 @@ class QuestionsController extends BaseController {
     }
 
     /**
+     * Return whether or not the balancer is in use
+     *
+     * @param $id Suite ID
+     *
+     */
+    public function actionBalancerEnabled($id) {
+        // balancer should be enabled by default
+        $status = $this->redis->hget('status', 'balancer');
+        if ($status === null)
+            $status = 1;
+
+        echo json_encode(array('success' => true, 'balancer' => $status));
+        exit;
+    }
+
+
+    /**
      * UI for asking a question
      * @param $id ID of suite to ask question in 
      *
@@ -102,6 +124,32 @@ class QuestionsController extends BaseController {
             'questions' => $questions,
             'suite_id' => $id
         ));
+    }
+
+    /**
+     * Disable the balancer
+     *
+     * @param $id Suite ID
+     *
+     */
+    public function actionDisableBalancer($id) {
+        $this->redis->hset('status', 'balancer', 0);
+
+        echo json_encode(array('success' => true, 'balancer' => 0));
+        exit;
+    }
+
+    /**
+     * Disable the queue
+     *
+     * @param $id Suite ID
+     *
+     */
+    public function actionDisableQueue($id) {
+        $this->redis->hset('status', 'queue', 0);
+
+        echo json_encode(array('success' => true, 'queue' => 0));
+        exit;
     }
 
     /**
@@ -137,6 +185,32 @@ class QuestionsController extends BaseController {
         // invalidate cache since a question has been removed
         $this->memcache->delete("queue?suite_id={$question->suite_id}");
         echo json_encode(array('success' => true));
+        exit;
+    }
+
+    /**
+     * Enable the load balancer
+     *
+     * @param $id Suite ID
+     *
+     */
+    public function actionEnableBalancer($id) {
+        $this->redis->hset('status', 'balancer', 1);
+
+        echo json_encode(array('success' => true, 'balancer' => 1));
+        exit;
+    }
+
+    /**
+     * Enable the queue
+     *
+     * @param $id Suite ID
+     *
+     */
+    public function actionEnableQueue($id) {
+        $this->redis->hset('status', 'queue', 1);
+
+        echo json_encode(array('success' => true, 'queue' => 1));
         exit;
     }
 
@@ -182,7 +256,19 @@ class QuestionsController extends BaseController {
     public function actionQueue($id) {
         $questions = $this->queue($id);
         echo $this->json('questions', $questions['questions'], 
-            'id, suite_id, student_id, staff_id, title, question, anonymous, ask_timestamp, state, labels, student');
+            'id, suite_id, student_id, staff_id, title, question, anonymous, ask_timestamp, state, labels, student', 
+            true);
+        exit;
+    }
+
+    /**
+     * Return whether or not the queue is open
+     *
+     * @param $id Suite ID
+     *
+     */
+    public function actionQueueEnabled($id) {
+        echo json_encode(array('success' => true, 'queue' => $this->redis->hget('status', 'queue')));
         exit;
     }
 

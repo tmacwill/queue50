@@ -1,1 +1,2 @@
-protected/runtime/*.log
+*.log
+*.log.1

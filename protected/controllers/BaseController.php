@@ -196,7 +196,7 @@ class BaseController extends Controller {
      * Modified from http://learnyii.blogspot.com/2011/07/yii-json-cjson-models-model-related.html
      *
      */
-    public function json($key, $models, $attributeNames) {
+    public function json($key, $models, $attributeNames, $forceArray = false) {
         if (!is_array($models))
             $models = array($models);
 
@@ -212,7 +212,7 @@ class BaseController extends Controller {
             $rows[] = $row;
         }
 
-        return (count($rows) == 1) ? CJSON::encode(array($key => array_shift($rows))) : 
+        return (count($rows) == 1 && !$forceArray) ? CJSON::encode(array($key => array_shift($rows))) : 
             CJSON::encode(array($key => $rows));
     }
 }
