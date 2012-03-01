@@ -87,7 +87,7 @@ $(function() {
 
     socket.on('toQueue', function(data) {
         if (window.question_id == data.id) {
-            updateEvent(data.id, 'entered the Queue', false);
+            updateEvent(data.id, 'entered the Queue');
             showNotification('Your question has entered the Queue!');
         }
     });
@@ -155,6 +155,10 @@ $(function() {
 
             // remember question id
             window.question_id = response.id;
+
+            // if load balancer is diabled, then question has entered the queue immediately
+            if (response.destination == 1)
+                updateEvent(data.id, 'entered the Queue');
         });
 
         e.preventDefault();

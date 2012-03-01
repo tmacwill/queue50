@@ -8,6 +8,12 @@ class QuestionsController extends BaseController {
     private $memcache;
     private $redis;
 
+    const STATE_IN_BALANCER = 0;
+    const STATE_IN_QUEUE = 1;
+    const STATE_IN_HELP = 2;
+    const STATE_DISPATCHED = 3;
+    const STATE_DONE = 4;
+
     public function __construct($id, $module = null) {
         parent::__construct($id, $module);
 
@@ -32,9 +38,11 @@ class QuestionsController extends BaseController {
      *
      */
     public function actionAdd($id) {
+        $balancer = $this->getStatus($id, 'balancer');
+
         // set question defaults
         $_POST['anonymous'] = 0;
-        $_POST['state'] = 0;
+        $_POST['state'] = ($balancer) ? self::STATE_IN_BALANCER : self::STATE_IN_QUEUE;
         $_POST['ask_timestamp'] = date('Y-m-d H:i:s');
         $_POST['suite_id'] = $id;
         $_POST['student_id'] = 1;
@@ -54,13 +62,25 @@ class QuestionsController extends BaseController {
                 'question_id' => $question->id,
             ));
 
-        // relay request to load balancer through the live server
-        $this->notifyLive("questions/add/$id");
+        // load balancer enabled, so notify live server
+        if ($balancer)
+            $this->notifyLive("questions/add/$id");
+
+        // load balancer disabled, so notify live server and ipad
+        else {
+            // question has gone immediately to queue, so update action timestamp
+            $question->action_timestamp = date('Y-m-d H:i:s');
+            $question->save();
+
+            $this->notifyLive("questions/toQueue/{$question->suite_id}/$id");
+            $this->notifyPad('queue_suite_id_' . $question->suite_id, '"alert":"New Question!","type":"refresh"');
+        }
+
         echo json_encode(array(
-            'success' => true, 
-            'id' => $question->id
+            'destination' => $question->state,
+            'id' => $question->id,
+            'success' => true
         ));
-        exit;
     }
 
     /**
@@ -86,12 +106,9 @@ class QuestionsController extends BaseController {
      *
      */
     public function actionBalancerEnabled($id) {
-        // balancer should be enabled by default
-        $status = $this->redis->hget('status', 'balancer');
-        if ($status === null)
-            $status = 1;
-
-        echo json_encode(array('success' => true, 'balancer' => $status));
+        echo json_encode(array(
+            'success' => true, 
+            'balancer' => $this->getStatus($id, 'balancer')));
         exit;
     }
 
@@ -133,7 +150,7 @@ class QuestionsController extends BaseController {
      *
      */
     public function actionDisableBalancer($id) {
-        $this->redis->hset('status', 'balancer', 0);
+        $this->setStatus($id, 'balancer', 0);
 
         echo json_encode(array('success' => true, 'balancer' => 0));
         exit;
@@ -146,7 +163,7 @@ class QuestionsController extends BaseController {
      *
      */
     public function actionDisableQueue($id) {
-        $this->redis->hset('status', 'queue', 0);
+        $this->setStatus($id, 'queue', 0);
 
         echo json_encode(array('success' => true, 'queue' => 0));
         exit;
@@ -174,7 +191,7 @@ class QuestionsController extends BaseController {
         Yii::app()->db->createCommand()->update('questions', array(
             'dispatch_timestamp' => date('Y-m-d H:i:s'),
             'staff_id' => $staff_id,
-            'state' => 3
+            'state' => self::STATE_DISPATCHED
         ), array('in', 'id', $question_ids));
 
         // relay dispatch notifications through live server
@@ -182,8 +199,31 @@ class QuestionsController extends BaseController {
         $question = Question::model()->findByPk($question_ids[0]);
         $this->notifyLive("questions/dispatch/{$question->suite_id}/$question_ids");
 
+        // notify ipod push notification server
+        $this->notifyPod('question_user_id_' . $staff_id, '"alert":"New Question!","ids":[' . $question_ids  . ']');
+
         // invalidate cache since a question has been removed
         $this->memcache->delete("queue?suite_id={$question->suite_id}");
+        echo json_encode(array('success' => true));
+        exit;
+    }
+
+    /**
+     * TF is done with a question
+     *
+     */
+    public function actionDone() {
+        // get question from database
+        $question = Question::model()->findByPk($_POST['id']);
+        $question->done_timestamp = date('Y-m-d H:i:s');
+        $question->state = self::STATE_DONE;
+
+        // persist question
+        if (!$question->save()) {
+            echo json_encode(array('success' => false));
+            exit;
+        }
+
         echo json_encode(array('success' => true));
         exit;
     }
@@ -195,7 +235,7 @@ class QuestionsController extends BaseController {
      *
      */
     public function actionEnableBalancer($id) {
-        $this->redis->hset('status', 'balancer', 1);
+        $this->setStatus($id, 'balancer', 0);
 
         echo json_encode(array('success' => true, 'balancer' => 1));
         exit;
@@ -208,31 +248,40 @@ class QuestionsController extends BaseController {
      *
      */
     public function actionEnableQueue($id) {
-        $this->redis->hset('status', 'queue', 1);
+        $this->setStatus($id, 'queue', 0);
 
         echo json_encode(array('success' => true, 'queue' => 1));
         exit;
     }
 
     /**
-     * Get a single question
+     * Get info for questions
+     *
+     * @param $id Comma-separated list of IDs
      *
      */
     public function actionGet($id) {
-        // make sure object exists
-        if (!Question::model()->exists('id = :id', array(':id' => $id))) {
-            echo json_encode(array('success' => false));
-            exit;
+        $ids = explode(',', $id);
+
+        // get questions from database
+        $questions = Question::model()->with('labels')->findAllByAttributes(array(
+            'id' => $ids
+        ));
+
+        // get associated students and staff
+        $student_ids = array_map(function ($e) { return $e->student_id; }, $questions);
+        $staff_ids = array_map(function ($e) { return $e->staff_id; }, $questions);
+        $users = $this->cs50->users(array_merge($student_ids, $staff_ids));
+
+        // associate question metadata
+        foreach ($questions as &$question) {
+            $question->student = isset($users[$question->student_id]) ? $users[$question->student_id] : null;
+            $question->staff = isset($users[$question->staff_id]) ? $users[$question->staff_id] : null;
         }
 
-        // get object from database
-        $question = Question::model()->with('labels')->findByPk($id);
-        $question->student = $this->cs50->user($question->student_id);
-        if ($question->staff_id)
-            $question->staff = $this->cs50->user($question->staff_id);
-
-        echo $this->json('question', $question,
-            'id, suite_id, title, question, anonymous, ask_timestamp, action_timestamp, dispatch_timestamp, state, labels, student, staff');
+        echo $this->json('question', $questions,
+            'id, suite_id, title, question, anonymous, ask_timestamp, ' .
+            'state, labels, student, staff');
         exit;
     }
 
@@ -244,6 +293,35 @@ class QuestionsController extends BaseController {
      */
     public function actionLoadBalancer($id) {
         echo CJSON::encode($this->loadBalancer($id));
+        exit;
+    }
+
+    /**
+     * Get the history for a single staff member
+     *
+     * @param $id ID of staff member
+     *
+     */
+    public function actionHistory($id) {
+        // get all questions dispatched to TF
+        $questions = Question::model()->with('labels')->findAll(array(
+            'condition' => 'staff_id = :staff_id',
+            'order' => 'ask_timestamp desc',
+            'params' => array(
+                'staff_id' => $id
+            )
+        ));
+
+        // get students for returned questions
+        $student_ids = array_map(function($e) { return $e->student_id; }, $questions);
+        $students = $this->cs50->users($student_ids);
+
+        // associate students with question
+        foreach ($questions as $question)
+            $question->student = $students[$question->student_id];
+
+        echo $this->json('questions', $questions,
+            'id, suite_id, title, question, state, labels, student', true);
         exit;
     }
 
@@ -268,7 +346,9 @@ class QuestionsController extends BaseController {
      *
      */
     public function actionQueueEnabled($id) {
-        echo json_encode(array('success' => true, 'queue' => $this->redis->hget('status', 'queue')));
+        echo json_encode(array(
+            'success' => true, 
+            'queue' => $this->getStatus($id, 'queue')));
         exit;
     }
 
@@ -287,7 +367,7 @@ class QuestionsController extends BaseController {
         $id = $_POST['id'];
         $question = Question::model()->findByPk($id);
         $question->action_timestamp = date('Y-m-d H:i:s');
-        $question->state = 2;
+        $question->state = self::STATE_IN_HELP;
 
         // persist question
         if (!$question->save()) {
@@ -317,7 +397,7 @@ class QuestionsController extends BaseController {
         $id = $_POST['id'];
         $question = Question::model()->findByPk($id);
         $question->action_timestamp = date('Y-m-d H:i:s');
-        $question->state = 1;
+        $question->state = self::STATE_IN_QUEUE;
 
         // persist question
         if (!$question->save()) {
@@ -327,10 +407,10 @@ class QuestionsController extends BaseController {
 
         // notify live server so student gets update and push server so ipad gets update
         $this->notifyLive("questions/toQueue/{$question->suite_id}/$id");
-        $this->notifyPush('queue_suite_id_' . $question->suite_id, 'refresh');
+        $this->notifyPad('queue_suite_id_' . $question->suite_id, '"alert":"New Question!","type":"refresh"');
 
         // invalidate cache since a new question has been added
-        $this->memcache->delete("queue?suite_id={$question->suite_id}");
+        //$this->memcache->delete("queue?suite_id={$question->suite_id}");
 
         echo json_encode(array('success' => true));
         exit;
@@ -351,13 +431,36 @@ class QuestionsController extends BaseController {
             'order' => 'ask_timestamp asc',
             'params' => array(
                 'suite_id' => $id,
-                'state' => 0,
+                'state' => self::STATE_IN_BALANCER,
                 'yesterday' => date('Y-m-d H:i:s', strtotime('-1 day')),
                 'tomorrow' => date('Y-m-d H:i:s', strtotime('+1 day'))
             )
         ));
 
         return $questions;
+    }
+
+    /**
+     * Get info about the current status of the app
+     * 
+     * @param $key Status key
+     * @return Value describing app status
+     *
+     */
+    public function getStatus($id, $key) {
+        // get value from redis
+        $value = $this->redis->hget("status?suite_id=$id", $key);
+
+        // redis is empty, so determine default value
+        if ($value === null) {
+            if ($key == 'balancer')
+                return 1;
+            else if ($key == 'queue')
+                return 0;
+        }
+
+        // redis not empty, so return that
+        return $value;
     }
 
     /**
@@ -374,18 +477,37 @@ class QuestionsController extends BaseController {
     }
 
     /**
-     * Notify the push notification server
+     * Notify the iPad push notification server
      *
      */
-    public function notifyPush($channel, $data) {
-        // omg stupid quotes, bug report submitted to parse
-        $data = '{"channel":"' . $channel . '","type":"ios","data":{"alert":"' . $data . '"}}';
+    public function notifyPad($channel, $data) {
+        $data = '{"channel":"' . $channel . '","type":"ios","data":{' . $data . '}}';
 
         $ch = curl_init("https://api.parse.com/1/push");
         curl_setopt($ch, CURLOPT_HTTPHEADER, array(
             'Content-Type: application/json',
             'X-Parse-Application-Id: IwrE84o8YUVtrIGvMsztIYQ4aYVrRvOpBidzWdk1',
             'X-Parse-REST-API-Key: 8FhCdrit7PhvcYsCaXJozeRnEFpqwsYPmwttfl1C'
+        ));
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_exec($ch);
+        curl_close($ch);
+    }
+
+    /**
+     * Notify the iPod push notification server
+     *
+     */
+    public function notifyPod($channel, $data) {
+        $data = '{"channel":"' . $channel . '","type":"ios","data":{' . $data . '}}';
+
+        $ch = curl_init("https://api.parse.com/1/push");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Content-Type: application/json',
+            'X-Parse-Application-Id: Fqi2knNxzqGBqBjhll97l8bsbV2D4rF0Fvia3Fs5',
+            'X-Parse-REST-API-Key: ePTokndsBJMbIYoTO3kcWjdH0TH1e0PHrBGfXHSi'
         ));
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
@@ -403,9 +525,9 @@ class QuestionsController extends BaseController {
      */
     public function queue($id) {
         // check cache for questions and return if not empty
-        $questions = $this->memcache->get("queue?suite_id=$id");
-        if ($questions !== false && $questions !== null) 
-            return array('questions' => $questions, 'changed' => false);
+        //$questions = $this->memcache->get("queue?suite_id=$id");
+        //if ($questions !== false && $questions !== null) 
+            //return array('questions' => $questions, 'changed' => false);
 
         // fetch all questions in the queue from within 48 hours
         $questions = Question::model()->with('labels')->findAll(array(
@@ -414,13 +536,13 @@ class QuestionsController extends BaseController {
             'order' => 'ask_timestamp asc',
             'params' => array(
                 'suite_id' => $id,
-                'state' => 1,
+                'state' => self::STATE_IN_QUEUE,
                 'yesterday' => date('Y-m-d H:i:s', strtotime('-1 day')),
                 'tomorrow' => date('Y-m-d H:i:s', strtotime('+1 day'))
             ),
         ));
 
-        // get all students who have asked a question
+        // get students for returned questions
         $student_ids = array_map(function($e) { return $e->student_id; }, $questions);
         $students = $this->cs50->users($student_ids);
 
@@ -429,7 +551,17 @@ class QuestionsController extends BaseController {
             $question->student = $students[$question->student_id];
 
         // cache and return questions
-        $this->memcache->set("queue?suite_id=$id", $questions);
+        //$this->memcache->set("queue?suite_id=$id", $questions);
         return array('questions' => $questions, 'changed' => true);
+    }
+
+    /**
+     * Set info about the current status of the app
+     * 
+     * @param $key Key into status array
+     *
+     */
+    public function setStatus($id, $key, $value) {
+        $this->redis->hset("status?suite_id=$id", $key, $value);
     }
 }
